@@ -7,6 +7,8 @@ import time
 import threading
 import platform
 
+import requests
+
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QLineEdit, QTextEdit, QTabWidget,
@@ -567,6 +569,18 @@ class TrainReservationApp(QMainWindow):
         self.ktx_save_login_check.setChecked(True)
         login_card.add_widget(self.ktx_save_login_check)
 
+        # 텔레그램 알림 정보
+        self.ktx_telegram_token_input = QLineEdit()
+        self.ktx_telegram_token_input.setPlaceholderText("텔레그램 Bot Token")
+        self.ktx_telegram_chat_id_input = QLineEdit()
+        self.ktx_telegram_chat_id_input.setPlaceholderText("텔레그램 Chat ID")
+        login_card.add_widget(self.ktx_telegram_token_input)
+        login_card.add_widget(self.ktx_telegram_chat_id_input)
+
+        self.ktx_save_telegram_check = QCheckBox("텔레그램 정보 저장 (안전하게 암호화됨)")
+        self.ktx_save_telegram_check.setChecked(True)
+        login_card.add_widget(self.ktx_save_telegram_check)
+
         layout.addWidget(login_card)
 
         # 검색 조건
@@ -986,6 +1000,13 @@ class TrainReservationApp(QMainWindow):
             self.ktx_pw_input.setText(ktx_login.password)
             self.ktx_save_login_check.setChecked(True)
 
+        # KTX 텔레그램 정보 로드
+        ktx_telegram = CredentialStorage.load_ktx_telegram()
+        if ktx_telegram:
+            self.ktx_telegram_token_input.setText(ktx_telegram.token)
+            self.ktx_telegram_chat_id_input.setText(ktx_telegram.chat_id)
+            self.ktx_save_telegram_check.setChecked(True)
+
         # KTX 결제 정보 로드
         ktx_payment = CredentialStorage.load_ktx_payment()
         if ktx_payment:
@@ -1068,6 +1089,15 @@ class TrainReservationApp(QMainWindow):
                 CredentialStorage.save_ktx_login(username, password)
             else:
                 CredentialStorage.delete_ktx_login()
+
+            # 텔레그램 정보 저장 (체크박스 확인)
+            telegram_token = self.ktx_telegram_token_input.text().strip()
+            telegram_chat_id = self.ktx_telegram_chat_id_input.text().strip()
+            if self.ktx_save_telegram_check.isChecked() and telegram_token and telegram_chat_id:
+                CredentialStorage.save_ktx_telegram(telegram_token, telegram_chat_id)
+            elif not self.ktx_save_telegram_check.isChecked():
+                CredentialStorage.delete_ktx_telegram()
+
             self.add_log("🔍 열차 검색 중...")
 
             departure_date = datetime.datetime.strptime(self.ktx_date_input.text(), "%Y%m%d").date()
@@ -1203,7 +1233,9 @@ class TrainReservationApp(QMainWindow):
                     if reservation.success:
                         self.add_log(f"  ✓ {train.train_number} 예약 성공!")
                         self.add_log(f"  예약번호: {reservation.reservation_number}")
-
+                        self._send_ktx_telegram_message(
+                            self._build_ktx_reservation_success_message(train, reservation)
+                        )
                         # 결제 정보 검증
                         if not self._validate_ktx_payment_info():
                             self.add_log("  ✗ 예약은 완료되었으나 결제 정보가 입력되지 않았습니다.")
@@ -1223,6 +1255,9 @@ class TrainReservationApp(QMainWindow):
 
                         if payment.success:
                             self.add_log(f"  ✓ 결제 완료!")
+                            self._send_ktx_telegram_message(
+                                self._build_ktx_payment_success_message(train, reservation, payment)
+                            )
                             self.is_ktx_running = False
                             # 버튼 상태 업데이트
                             QTimer.singleShot(0, lambda: self.ktx_start_btn.setEnabled(True))
@@ -1251,6 +1286,53 @@ class TrainReservationApp(QMainWindow):
 
                 except Exception as e:
                     self.add_log(f"  ✗ 오류: {str(e)}")
+
+    def _send_ktx_telegram_message(self, message: str):
+        """KTX 텔레그램 메시지 전송"""
+        token = self.ktx_telegram_token_input.text().strip()
+        chat_id = self.ktx_telegram_chat_id_input.text().strip()
+
+        if not token or not chat_id:
+            return
+
+        try:
+            response = requests.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": chat_id, "text": message},
+                timeout=5,
+            )
+            if response.ok:
+                self.add_log("📨 텔레그램 알림 전송 완료")
+            else:
+                self.add_log(f"⚠️ 텔레그램 알림 전송 실패: {response.status_code}")
+        except Exception as e:
+            self.add_log(f"⚠️ 텔레그램 알림 오류: {str(e)}")
+
+    def _build_ktx_reservation_success_message(self, train: TrainSchedule, reservation: ReservationResult) -> str:
+        """KTX 예약 성공 메시지 생성"""
+        return "\n".join([
+            "✅ KTX 예약 성공",
+            f"열차: {train.train_number}",
+            f"구간: {train.departure_station} → {train.arrival_station}",
+            f"출발: {train.departure_time.strftime('%Y-%m-%d %H:%M')}",
+            f"예약번호: {reservation.reservation_number}",
+        ])
+
+    def _build_ktx_payment_success_message(
+        self,
+        train: TrainSchedule,
+        reservation: ReservationResult,
+        payment: PaymentResult,
+    ) -> str:
+        """KTX 결제 성공 메시지 생성"""
+        return "\n".join([
+            "💳 KTX 결제 완료",
+            f"열차: {train.train_number}",
+            f"구간: {train.departure_station} → {train.arrival_station}",
+            f"출발: {train.departure_time.strftime('%Y-%m-%d %H:%M')}",
+            f"예약번호: {reservation.reservation_number}",
+            f"결제예약번호: {payment.reservation_number}",
+        ])
 
     def stop_ktx(self):
         """KTX 예약 중지"""
@@ -1425,7 +1507,6 @@ class TrainReservationApp(QMainWindow):
                     if reservation.success:
                         self.add_log(f"  ✓ {train.train_number} 예약 성공!")
                         self.add_log(f"  예약번호: {reservation.reservation_number}")
-
                         # 결제 정보 검증
                         if not self._validate_srt_payment_info():
                             self.add_log("  ✗ 예약은 완료되었으나 결제 정보가 입력되지 않았습니다.")

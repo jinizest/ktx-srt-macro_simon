@@ -1,7 +1,7 @@
 """Unit tests for CredentialStorage"""
 from unittest.mock import patch
 from src.infrastructure.security.credential_storage import CredentialStorage
-from src.infrastructure.security.dto import LoginCredentials, PaymentCredentials
+from src.infrastructure.security.dto import LoginCredentials, PaymentCredentials, TelegramCredentials
 
 
 class TestCredentialStorageConstants:
@@ -31,6 +31,10 @@ class TestCredentialStorageConstants:
         assert hasattr(CredentialStorage, "KEY_SRT_CARD_EXPIRE")
         assert hasattr(CredentialStorage, "KEY_SRT_CARD_VALIDATION")
         assert hasattr(CredentialStorage, "KEY_SRT_CARD_CORPORATE")
+
+        # Telegram keys
+        assert hasattr(CredentialStorage, "KEY_KTX_TELEGRAM_TOKEN")
+        assert hasattr(CredentialStorage, "KEY_KTX_TELEGRAM_CHAT_ID")
 
 
 @patch("src.infrastructure.security.credential_storage.keyring")
@@ -371,3 +375,46 @@ class TestCredentialStorageSRTPayment:
 
         # Assert
         assert mock_keyring.delete_password.call_count == 5
+
+
+@patch("src.infrastructure.security.credential_storage.keyring")
+class TestCredentialStorageKTXTelegram:
+    """Tests for KTX Telegram credential storage"""
+
+    def test_save_ktx_telegram(self, mock_keyring):
+        """Test saving KTX telegram credentials"""
+        token = "12345:abcde"
+        chat_id = "987654321"
+
+        CredentialStorage.save_ktx_telegram(token, chat_id)
+
+        assert mock_keyring.set_password.call_count == 2
+        mock_keyring.set_password.assert_any_call("KTX-SRT-Macro", "ktx_telegram_token", token)
+        mock_keyring.set_password.assert_any_call("KTX-SRT-Macro", "ktx_telegram_chat_id", chat_id)
+
+    def test_load_ktx_telegram_success(self, mock_keyring):
+        """Test loading KTX telegram credentials successfully"""
+        mock_keyring.get_password.side_effect = ["12345:abcde", "987654321"]
+
+        result = CredentialStorage.load_ktx_telegram()
+
+        assert result is not None
+        assert isinstance(result, TelegramCredentials)
+        assert result.token == "12345:abcde"
+        assert result.chat_id == "987654321"
+
+    def test_load_ktx_telegram_missing(self, mock_keyring):
+        """Test loading KTX telegram credentials when missing"""
+        mock_keyring.get_password.side_effect = [None, None]
+
+        result = CredentialStorage.load_ktx_telegram()
+
+        assert result is None
+
+    def test_delete_ktx_telegram(self, mock_keyring):
+        """Test deleting KTX telegram credentials"""
+        CredentialStorage.delete_ktx_telegram()
+
+        assert mock_keyring.delete_password.call_count == 2
+        mock_keyring.delete_password.assert_any_call("KTX-SRT-Macro", "ktx_telegram_token")
+        mock_keyring.delete_password.assert_any_call("KTX-SRT-Macro", "ktx_telegram_chat_id")
