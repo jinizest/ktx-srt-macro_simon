@@ -2,7 +2,7 @@
 import keyring
 from typing import Optional
 
-from src.infrastructure.security.dto import LoginCredentials, PaymentCredentials
+from src.infrastructure.security.dto import LoginCredentials, PaymentCredentials, TelegramCredentials
 
 
 class CredentialStorage:
@@ -34,6 +34,10 @@ class CredentialStorage:
     KEY_SRT_CARD_EXPIRE = "srt_card_expire"
     KEY_SRT_CARD_VALIDATION = "srt_card_validation"
     KEY_SRT_CARD_CORPORATE = "srt_card_corporate"
+
+    KEY_KTX_TELEGRAM_TOKEN = "ktx_telegram_token"
+    KEY_KTX_TELEGRAM_CHAT_ID = "ktx_telegram_chat_id"
+
 
     @staticmethod
     def _set_credential(key: str, value: str) -> None:
@@ -142,6 +146,29 @@ class CredentialStorage:
         CredentialStorage._delete_credential(CredentialStorage.KEY_KTX_CARD_EXPIRE)
         CredentialStorage._delete_credential(CredentialStorage.KEY_KTX_CARD_VALIDATION)
         CredentialStorage._delete_credential(CredentialStorage.KEY_KTX_CARD_CORPORATE)
+
+    # KTX Telegram Credentials
+    @staticmethod
+    def save_ktx_telegram(token: str, chat_id: str) -> None:
+        """Save KTX Telegram bot credentials"""
+        CredentialStorage._set_credential(CredentialStorage.KEY_KTX_TELEGRAM_TOKEN, token)
+        CredentialStorage._set_credential(CredentialStorage.KEY_KTX_TELEGRAM_CHAT_ID, chat_id)
+
+    @staticmethod
+    def load_ktx_telegram() -> Optional[TelegramCredentials]:
+        """Load KTX Telegram bot credentials"""
+        token = CredentialStorage._get_credential(CredentialStorage.KEY_KTX_TELEGRAM_TOKEN)
+        chat_id = CredentialStorage._get_credential(CredentialStorage.KEY_KTX_TELEGRAM_CHAT_ID)
+
+        if token and chat_id:
+            return TelegramCredentials(token=token, chat_id=chat_id)
+        return None
+
+    @staticmethod
+    def delete_ktx_telegram() -> None:
+        """Delete KTX Telegram bot credentials"""
+        CredentialStorage._delete_credential(CredentialStorage.KEY_KTX_TELEGRAM_TOKEN)
+        CredentialStorage._delete_credential(CredentialStorage.KEY_KTX_TELEGRAM_CHAT_ID)
 
     # SRT Payment Credentials
     @staticmethod

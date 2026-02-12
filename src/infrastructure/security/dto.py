@@ -17,3 +17,10 @@ class PaymentCredentials:
     expire: str
     validation_number: str  # 생년월일 또는 사업자번호
     is_corporate: bool
+
+
+@dataclass
+class TelegramCredentials:
+    """Telegram bot credentials DTO"""
+    token: str
+    chat_id: str
