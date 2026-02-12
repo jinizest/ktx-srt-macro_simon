@@ -1272,6 +1272,9 @@ class TrainReservationApp(QMainWindow):
                             self.add_log(f"    예약번호: {payment.reservation_number}")
                             self.add_log("    알림음 중지 버튼을 눌러 알림음을 중지하고")
                             self.add_log("    앱에 들어가 10분 내에 결제해주세요.")
+                            self._send_ktx_telegram_message(
+                                self._build_ktx_payment_failed_message(train, reservation, payment)
+                            )
                             self.is_ktx_running = False  # 예약 루프 중지
                             # 반복 알림음 재생 시작
                             self.alert_thread = threading.Thread(target=self._play_alert_sound_loop, daemon=True)
@@ -1314,11 +1317,40 @@ class TrainReservationApp(QMainWindow):
 
     def _build_ktx_start_message(self, selected_indices: list[int]) -> str:
         """KTX 예약 시작 메시지 생성"""
-        selected_trains = [self.ktx_trains[i].train_number for i in selected_indices]
+        weekday_names = ["월", "화", "수", "목", "금", "토", "일"]
+        selected_trains = [self.ktx_trains[i] for i in selected_indices]
+
+        train_lines = []
+        for train in selected_trains:
+            weekday = weekday_names[train.departure_time.weekday()]
+            train_lines.append(
+                (
+                    f"- {train.train_number} | "
+                    f"{train.departure_time.strftime('%Y-%m-%d')}({weekday}) "
+                    f"{train.departure_time.strftime('%H:%M')} | "
+                    f"{train.departure_station}→{train.arrival_station}"
+                )
+            )
+
+        adult_count = int(self.ktx_adult_input.text() or "0")
+        child_count = int(self.ktx_child_input.text() or "0")
+        senior_count = int(self.ktx_senior_input.text() or "0")
+        total_passengers = adult_count + child_count + senior_count
+
+        passenger_parts = []
+        if adult_count:
+            passenger_parts.append(f"어른 {adult_count}")
+        if child_count:
+            passenger_parts.append(f"어린이 {child_count}")
+        if senior_count:
+            passenger_parts.append(f"경로 {senior_count}")
+        passenger_summary = ", ".join(passenger_parts) if passenger_parts else "미지정"
 
         return "\n".join([
             "🚀 KTX 예약 시작",
-            f"선택 열차: {', '.join(selected_trains)}",
+            f"예약 인원: 총 {total_passengers}명 ({passenger_summary})",
+            "선택 열차 정보:",
+            *train_lines,
             "예약 매크로 실행이 시작되었습니다.",
         ])
 
@@ -1358,6 +1390,24 @@ class TrainReservationApp(QMainWindow):
             f"출발: {train.departure_time.strftime('%Y-%m-%d %H:%M')}",
             f"예약번호: {reservation.reservation_number}",
             f"결제예약번호: {payment.reservation_number}",
+        ])
+
+    def _build_ktx_payment_failed_message(
+        self,
+        train: TrainSchedule,
+        reservation: ReservationResult,
+        payment: PaymentResult,
+    ) -> str:
+        """KTX 결제 실패 메시지 생성"""
+        return "\n".join([
+            "❌ KTX 결제 실패",
+            f"열차: {train.train_number}",
+            f"구간: {train.departure_station} → {train.arrival_station}",
+            f"출발: {train.departure_time.strftime('%Y-%m-%d %H:%M')}",
+            f"예약번호: {reservation.reservation_number}",
+            f"결제예약번호: {payment.reservation_number}",
+            "결제에 실패하여 자동 결제를 완료하지 못했습니다.",
+            "앱에서 10분 내 결제를 완료해주세요.",
         ])
 
     def stop_ktx(self):
