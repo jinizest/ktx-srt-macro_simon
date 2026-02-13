@@ -205,24 +205,28 @@ uv run pytest tests/ -k "external" -v           # 외부 모듈 테스트만
 
 **Windows**
 ```bash
-# 의존성 설치
-uv sync
+# 의존성 설치 (빌드 도구 + 런타임 의존성 모두 설치)
+uv sync --extra build
 
 # 빌드 실행
-uv run pyinstaller --name KTX-SRT-Macro --onefile --windowed \
+uv run --extra build pyinstaller --name KTX-SRT-Macro --onefile --windowed \
   --icon "assets/favicon.ico" --add-data "src;src" --add-data "assets;assets" \
+  --collect-all PyQt6 \
   --noupx main.py
 ```
 
 **macOS**
 ```bash
-# 의존성 설치
-uv sync
+# 의존성 설치 (빌드 도구 + 런타임 의존성 모두 설치)
+uv sync --extra build
 
 # 빌드 실행
-uv run pyinstaller --name KTX-SRT-Macro --onefile --windowed \
+uv run --extra build pyinstaller --name KTX-SRT-Macro --onefile --windowed \
   --icon "assets/favicon.icns" --add-data "src:src" --add-data "assets:assets" main.py
 ```
+
+> `ModuleNotFoundError: No module named 'PyQt6'` 오류가 나면, 대부분 **PyInstaller가 PyQt6이 설치된 동일한 uv 환경에서 실행되지 않았거나** PyQt6 번들링이 누락된 경우입니다.
+> 위 명령처럼 `--extra build`와 `--collect-all PyQt6`를 함께 사용해 다시 빌드하세요.
 
 빌드된 실행 파일은 `dist/` 디렉토리에 생성됩니다.
 
