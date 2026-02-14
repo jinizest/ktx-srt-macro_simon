@@ -11,12 +11,12 @@ import requests
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QLineEdit, QTextEdit, QTabWidget,
-    QCheckBox, QScrollArea, QFrame
+    QCheckBox, QScrollArea, QFrame, QComboBox
 )
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject
 from PyQt6.QtGui import QIcon, QPalette, QColor
 from domain.models.entities import ReservationRequest, Passenger, TrainSchedule, ReservationResult, CreditCard, PaymentResult
-from domain.models.enums import PassengerType, TrainType
+from domain.models.enums import PassengerType, TrainType, SeatPreference
 from src.infrastructure.adapters.ktx_service import KTXService
 from src.infrastructure.adapters.srt_service import SRTService
 from src.infrastructure.security.credential_storage import CredentialStorage
@@ -610,6 +610,15 @@ class TrainReservationApp(QMainWindow):
         grid.addWidget(QLabel("출발시간"), 1, 2)
         grid.addWidget(self.ktx_time_input, 1, 3)
 
+        self.ktx_seat_option_combo = QComboBox()
+        self.ktx_seat_option_combo.addItem("일반실 우선", SeatPreference.GENERAL_FIRST)
+        self.ktx_seat_option_combo.addItem("특실 우선", SeatPreference.SPECIAL_FIRST)
+        self.ktx_seat_option_combo.addItem("일반실만", SeatPreference.GENERAL_ONLY)
+        self.ktx_seat_option_combo.addItem("특실만", SeatPreference.SPECIAL_ONLY)
+
+        grid.addWidget(QLabel("좌석 옵션"), 2, 0)
+        grid.addWidget(self.ktx_seat_option_combo, 2, 1, 1, 3)
+
         search_card.add_layout(grid)
 
         # 승객 수 - 한 줄에 3개
@@ -1057,6 +1066,30 @@ class TrainReservationApp(QMainWindow):
         else:
             self.log_toggle_btn.setText("▼ 실행 로그 보기")
 
+    def _get_ktx_seat_preference(self) -> SeatPreference:
+        """현재 선택된 KTX 좌석 옵션 반환"""
+        value = self.ktx_seat_option_combo.currentData()
+        if isinstance(value, SeatPreference):
+            return value
+        return SeatPreference.GENERAL_FIRST
+
+    def _parse_ktx_datetime_inputs(self) -> tuple[datetime.date, str]:
+        """KTX 날짜/시간 입력값을 검증하고 표준 포맷으로 반환"""
+        date_text = self.ktx_date_input.text().strip()
+        time_text = self.ktx_time_input.text().strip()
+
+        departure_date = datetime.datetime.strptime(date_text, "%Y%m%d").date()
+
+        if len(time_text) == 4:
+            departure_time = f"{time_text}00"
+        elif len(time_text) == 6:
+            departure_time = time_text
+        else:
+            raise ValueError("출발시간은 HHMM 또는 HHMMSS 형식으로 입력해주세요")
+
+        datetime.datetime.strptime(f"{date_text}{departure_time}", "%Y%m%d%H%M%S")
+        return departure_date, departure_time
+
     def search_ktx(self):
         """KTX 열차 검색"""
         threading.Thread(target=self._search_ktx_thread, daemon=True).start()
@@ -1099,8 +1132,8 @@ class TrainReservationApp(QMainWindow):
 
             self.add_log("🔍 열차 검색 중...")
 
-            departure_date = datetime.datetime.strptime(self.ktx_date_input.text(), "%Y%m%d").date()
-            departure_time = self.ktx_time_input.text() + "00"
+            departure_date, departure_time = self._parse_ktx_datetime_inputs()
+            seat_preference = self._get_ktx_seat_preference()
 
             # 승객 정보 수집
             passengers = []
@@ -1126,7 +1159,8 @@ class TrainReservationApp(QMainWindow):
                 departure_date=departure_date,
                 departure_time=departure_time,
                 passengers=passengers,
-                train_type=TrainType.KTX
+                train_type=TrainType.KTX,
+                seat_preference=seat_preference
             )
 
             trains = self.ktx_service.search_trains(request)
@@ -1139,7 +1173,7 @@ class TrainReservationApp(QMainWindow):
                 self.add_log("✗ 열차를 찾을 수 없습니다")
 
         except Exception as e:
-            self.add_log(f"✗ 로그인 중 오류가 발생했습니다: {str(e)}")
+            self.add_log(f"✗ KTX 검색 중 오류가 발생했습니다: {str(e)}")
 
         finally:
             self.ktx_search_btn.setEnabled(True)
@@ -1227,7 +1261,8 @@ class TrainReservationApp(QMainWindow):
                         departure_date=train.departure_time.date(),
                         departure_time=train.departure_time.strftime("%H%M%S"),
                         passengers=passengers,
-                        train_type=TrainType.KTX
+                        train_type=TrainType.KTX,
+                        seat_preference=self._get_ktx_seat_preference()
                     )
                     reservation = self.ktx_service.reserve_train(train, request)
                     if reservation.success:
@@ -1348,6 +1383,7 @@ class TrainReservationApp(QMainWindow):
 
         return "\n".join([
             "🚀 KTX 예약 시작",
+            f"좌석 옵션: {self.ktx_seat_option_combo.currentText()}",
             f"예약 인원: 총 {total_passengers}명 ({passenger_summary})",
             "선택 열차 정보:",
             *train_lines,
@@ -1531,7 +1567,7 @@ class TrainReservationApp(QMainWindow):
                 self.add_log("✗ 열차를 찾을 수 없습니다")
 
         except Exception as e:
-            self.add_log(f"✗ 로그인 중 오류가 발생했습니다: {str(e)}")
+            self.add_log(f"✗ SRT 검색 중 오류가 발생했습니다: {str(e)}")
 
         finally:
             self.srt_search_btn.setEnabled(True)

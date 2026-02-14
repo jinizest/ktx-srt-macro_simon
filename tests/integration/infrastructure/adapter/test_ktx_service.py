@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime, date
 from src.infrastructure.adapters.ktx_service import KTXService
 from src.domain.models.entities import ReservationRequest, Passenger, CreditCard, ReservationResult
-from src.domain.models.enums import PassengerType, TrainType
+from src.domain.models.enums import PassengerType, TrainType, SeatPreference
 
 
 @pytest.fixture
@@ -152,6 +152,64 @@ class TestKTXServiceSearchTrains:
 
         # Assert
         assert result == []
+
+
+    @patch('src.infrastructure.adapters.ktx_service.Korail')
+    def test_search_trains_uses_requested_date_and_time(self, mock_korail_class, ktx_service, sample_reservation_request):
+        """요청한 날짜/시간으로 검색 API를 호출해야 한다"""
+        ktx_service._logged_in = True
+        mock_korail = Mock()
+        mock_korail.search_train.return_value = []
+        ktx_service._korail = mock_korail
+
+        ktx_service.search_trains(sample_reservation_request)
+
+        _, kwargs = mock_korail.search_train.call_args
+        assert kwargs["date"] == "20250115"
+        assert kwargs["time"] == "100000"
+
+
+class TestKTXSeatPreferenceMapping:
+    """KTX 좌석 옵션 매핑 테스트"""
+
+    def test_to_korail_reserve_option_special_first(self):
+        option = KTXService._to_korail_reserve_option(SeatPreference.SPECIAL_FIRST)
+        assert option == "SPECIAL_FIRST"
+
+    def test_to_korail_reserve_option_default_when_invalid(self):
+        option = KTXService._to_korail_reserve_option(None)
+        assert option == "GENERAL_FIRST"
+
+
+class TestKTXServiceReserveTrainOption:
+    """reserve 시 좌석 옵션 전달 테스트"""
+
+    @patch('src.infrastructure.adapters.ktx_service.Korail')
+    def test_reserve_train_passes_selected_seat_preference(self, mock_korail_class, ktx_service, sample_reservation_request):
+        ktx_service._logged_in = True
+        sample_reservation_request.seat_preference = SeatPreference.SPECIAL_FIRST
+
+        mock_korail = Mock()
+
+        mock_train = Mock()
+        mock_train.train_no = "001"
+        mock_train.has_seat.return_value = True
+
+        mock_schedule = Mock()
+        mock_schedule.train_number = "001"
+
+        mock_reservation = Mock()
+        mock_reservation.rsv_id = "R123456"
+
+        mock_korail.search_train.return_value = [mock_train]
+        mock_korail.reserve.return_value = mock_reservation
+        ktx_service._korail = mock_korail
+
+        result = ktx_service.reserve_train(mock_schedule, sample_reservation_request)
+
+        assert result.success is True
+        _, kwargs = mock_korail.reserve.call_args
+        assert kwargs["option"] == "SPECIAL_FIRST"
 
 
 class TestKTXServiceReserveTrain:

@@ -5,13 +5,27 @@ from src.domain.models.entities import (
     Station, TrainSchedule, ReservationRequest, ReservationResult, CreditCard, PaymentResult
 )
 from src.domain.models.enums import TrainType
-from src.infrastructure.external.ktx import Korail, TrainType as KorailTrainType
+from src.infrastructure.external.ktx import Korail, TrainType as KorailTrainType, ReserveOption
 from src.infrastructure.mappers import PassengerMapper
 from src.constants.stations import KTX_STATIONS
 
 
 class KTXService(TrainService):
     """KTX/Korail train service implementation"""
+
+
+    @staticmethod
+    def _to_korail_reserve_option(seat_preference):
+        """Convert domain seat preference to Korail reserve option"""
+        option_map = {
+            "general_first": ReserveOption.GENERAL_FIRST,
+            "special_first": ReserveOption.SPECIAL_FIRST,
+            "general_only": ReserveOption.GENERAL_ONLY,
+            "special_only": ReserveOption.SPECIAL_ONLY,
+        }
+
+        pref_value = getattr(seat_preference, "value", None)
+        return option_map.get(pref_value, ReserveOption.GENERAL_FIRST)
 
     def __init__(self):
         self._korail = Korail(auto_login=False)
@@ -103,7 +117,12 @@ class KTXService(TrainService):
                 return ReservationResult(success=False, message="No available seats")
 
             # Make reservation
-            reservation = self._korail.reserve(train=target_train, passengers=passengers)
+            reserve_option = self._to_korail_reserve_option(request.seat_preference)
+            reservation = self._korail.reserve(
+                train=target_train,
+                passengers=passengers,
+                option=reserve_option,
+            )
 
             if reservation:
                 return ReservationResult(
