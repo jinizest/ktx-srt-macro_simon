@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 from datetime import datetime, date
 
-from src.domain.models.enums import PassengerType, TrainType
+from src.domain.models.enums import PassengerType, TrainType, SeatPreference
 
 
 @dataclass
@@ -43,6 +43,7 @@ class ReservationRequest:
     departure_time: Optional[str] = None
     passengers: List[Passenger] = None
     train_type: Optional[TrainType] = None
+    seat_preference: SeatPreference = SeatPreference.GENERAL_FIRST
 
     def __post_init__(self):
         if self.passengers is None:
